@@ -14,13 +14,13 @@ def generate_launch_description() -> LaunchDescription:
                 output="screen",
             ),
             Node(
-                package="curubo_control",
+                package="curobo_control",
                 executable="joy_cmd_vel_node",
                 name="joy_cmd_vel_node",
                 output="screen",
             ),
             Node(
-                package="curubo_control",
+                package="curobo_control",
                 executable="curobo_control",
                 name="curobo_control",
                 output="screen",
