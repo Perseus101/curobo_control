@@ -180,7 +180,7 @@ class CuroboControlNode(Node):
         point.time_from_start = Duration(seconds=2.0).to_msg()
         trajectory_msg.points.append(point)
 
-        self.trajectory_publisher_.publish(trajectory_msg)
+        self.joint_trajectory_publisher.publish(trajectory_msg)
 
     def _curobo_joint_state_to_ros(
         self, solver_joint_state: JointState
