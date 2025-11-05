@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
-import torch
+import os
+import tempfile
+
 import numpy as np
-from pathlib import Path
 import rclpy
-from rclpy.node import Node
-from rclpy.duration import Duration
-from rclpy.action import ActionClient
-from geometry_msgs.msg import Twist
-from sensor_msgs.msg import Joy, JointState as JointStateMsg
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+import torch
 from control_msgs.action import GripperCommand
-from tf_transformations import quaternion_from_euler, quaternion_multiply
-from curobo.types.robot import RobotConfig, JointState
 from curobo.types.math import Pose
+from curobo.types.robot import JointState, RobotConfig
 from curobo.wrap.reacher.motion_gen import (
     MotionGen,
     MotionGenConfig,
     MotionGenPlanConfig,
 )
+from geometry_msgs.msg import Twist
+from rclpy.action import ActionClient
+from rclpy.duration import Duration
+from rclpy.node import Node
+from rclpy.qos import (
+    QoSDurabilityPolicy,
+    QoSHistoryPolicy,
+    QoSProfile,
+    QoSReliabilityPolicy,
+)
+from sensor_msgs.msg import Joy, JointState as JointStateMsg
+from std_msgs.msg import String
+from tf_transformations import quaternion_from_euler, quaternion_multiply
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 
 class CuroboControlNode(Node):
@@ -51,11 +60,61 @@ class CuroboControlNode(Node):
             self, GripperCommand, "/robotiq_gripper_controller/gripper_cmd"
         )
 
-        self.ur5e_cfg = RobotConfig.from_basic(
-            Path(__file__).parent / "ur5e.urdf",
-            "ur5e_base_link",
-            "ur5e_tool0",
+        robot_description_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=QoSReliabilityPolicy.RELIABLE,
         )
+        self.robot_description_subscription = self.create_subscription(
+            String,
+            "/robot_description",
+            self.robot_description_callback,
+            robot_description_qos,
+        )
+        self.robot_description = None
+        self._planner_ready = False
+
+        self.current_joint_state = None
+        self.get_logger().info(
+            "Waiting for `/robot_description` to initialize motion planner..."
+        )
+
+    def robot_description_callback(self, msg: String) -> None:
+        self.robot_description = msg.data
+        if not self.robot_description:
+            self.get_logger().warn("Received empty `/robot_description`; ignoring")
+            return
+        self.get_logger().info(
+            f"Received `/robot_description` (length={len(self.robot_description)})"
+        )
+        if not self.planner_ready:
+            self._initialize_robot_model(urdf_data=self.robot_description)
+            self._planner_ready = True
+
+    @property
+    def planner_ready(self) -> bool:
+        return self._planner_ready
+
+    def _initialize_robot_model(self, urdf_data: str) -> None:
+        temp_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".urdf",
+            delete=False,
+        )
+        try:
+            with temp_file:
+                temp_file.write(urdf_data)
+            self.ur5e_cfg = RobotConfig.from_basic(
+                temp_file.name,
+                "ur5e_base_link",
+                "ur5e_tool0",
+            )
+        finally:
+            try:
+                os.unlink(temp_file.name)
+            except OSError as exc:
+                self.get_logger().warn(f"Failed to remove temporary URDF: {exc}")
 
         self.motion_gen_config = MotionGenConfig.load_from_robot_config(
             self.ur5e_cfg,
@@ -66,8 +125,6 @@ class CuroboControlNode(Node):
 
         self.motion_gen = MotionGen(self.motion_gen_config)
         self.motion_gen.warmup()
-
-        self.current_joint_state = None
         self.get_logger().info(
             "Finished loading cuda robot model, waiting for `/cmd_vel`..."
         )
@@ -162,6 +219,10 @@ class CuroboControlNode(Node):
         return ros_joint_state
 
     def cmd_vel_callback(self, msg: Twist):
+        if not self.planner_ready:
+            self.get_logger().warn("Skipped velocity command; motion planner not ready")
+            return
+
         if self.current_joint_state is None:
             self.get_logger().warn("Skipped velocity command due to no joint state")
             return
@@ -262,7 +323,6 @@ class CuroboControlNode(Node):
 
         trajectory_msg.points.append(point)
         self.joint_trajectory_publisher.publish(trajectory_msg)
-
 
 def main(args=None) -> None:
     rclpy.init(args=args)
