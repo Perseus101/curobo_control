@@ -21,18 +21,12 @@ class JoyCmdVelNode(Node):
         )
         self._axes = [0.0, 0.0, 0.0, 0.0]
         self._publish_timer = self.create_timer(0.2, self._publish_cmd_vel)
-        self._publish_gripper_timer = self.create_timer(
-            0.2, self._publish_gripper_position
-        )
 
     def joy_callback(self, msg: Joy) -> None:
         self._axes[0] = self.VEL * float(msg.axes[0])
         self._axes[1] = self.VEL * float(msg.axes[1])
         self._axes[2] = self.VEL * float(msg.axes[3])
         self._axes[3] = self.ROT_VEL * (float(msg.buttons[-3]) - float(msg.buttons[-2]))
-
-    def _publish_gripper_position(self) -> None:
-        self._set_gripper_position(self._axes[4])
 
     def _publish_cmd_vel(self) -> None:
         if all([abs(ax) < self.DEADZONE for ax in self._axes]):
