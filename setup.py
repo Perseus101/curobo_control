@@ -20,6 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'curobo_control = curubo_control.curobo_control:main',
+            'joy_cmd_vel_node = curubo_control.joy_cmd_vel_node:main',
         ],
     },
 )
