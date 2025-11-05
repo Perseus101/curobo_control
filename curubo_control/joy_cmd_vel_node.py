@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 import rclpy
-import numpy as np
 from rclpy.node import Node
-from rclpy.duration import Duration
-from rclpy.action import ActionClient
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Joy
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 
 class JoyCmdVelNode(Node):
