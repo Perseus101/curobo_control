@@ -324,9 +324,10 @@ class CuroboControlNode(Node):
         trajectory_msg.points.append(point)
         self.joint_trajectory_publisher.publish(trajectory_msg)
 
+
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = JointStateListener()
+    node = CuroboControlNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
